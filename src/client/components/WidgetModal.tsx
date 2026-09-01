@@ -10,7 +10,6 @@ interface WidgetModalProps {
 
 // Universal clipboard copy helper (Safe for iOS Safari on non-HTTPS/IP addresses)
 async function copyToClipboard(text: string): Promise<boolean> {
-  // 1. Try modern clipboard API if available in secure context
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
@@ -20,7 +19,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
     }
   }
 
-  // 2. iOS-safe execCommand fallback
   try {
     const textArea = document.createElement('textarea');
     textArea.value = text;
@@ -36,11 +34,9 @@ async function copyToClipboard(text: string): Promise<boolean> {
     textArea.style.boxShadow = 'none';
     textArea.style.background = 'transparent';
     textArea.style.opacity = '0.01';
-    textArea.style.fontSize = '16px'; // Prevent zoom on iOS
+    textArea.style.fontSize = '16px';
 
     document.body.appendChild(textArea);
-
-    // Specific iOS Safari selection
     textArea.focus();
     textArea.select();
     textArea.setSelectionRange(0, 999999);
@@ -64,26 +60,34 @@ export const WidgetModal: React.FC<WidgetModalProps> = ({ isOpen, onClose, summa
 
   const habitItems = summary?.habits.items || [];
   const selectedHabit = habitItems[selectedHabitIndex] || habitItems[0];
-  const todoItems = summary?.todos.items || [
-    ...(summary?.todos.pending || []),
-    ...(summary?.todos.completed || []),
-  ];
+  const pendingTodos = summary?.todos.pending || [];
+  const completedTodos = summary?.todos.completed || [];
+  const displayTodos = [...pendingTodos.slice(0, 4), ...completedTodos.slice(0, Math.max(0, 5 - pendingTodos.slice(0, 4).length))];
 
   // Script 1: Habit Grid Script
   const habitScriptCode = `// ==============================================================================
-// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET: HABIT STREAK COMMIT GRID
+// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET 1: HABIT STREAK COMMIT GRID
 // ==============================================================================
-const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today"; // Ganti dengan IP Tailscale/LAN
+// 1. Ganti SERVER_URL dengan IP Tailscale/LAN home server Anda.
+// 2. Widget Parameter di iOS Home Screen:
+//    - Kosong (default): Habit pertama
+//    - Angka (1, 2...): Habit ke-N
+//    - Teks: Cari nama habit (misal: "Olahraga")
+// ==============================================================================
+
+const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today";
 
 async function createWidget() {
   const widget = new ListWidget();
   widget.backgroundColor = new Color("#08080a");
   widget.setPadding(12, 14, 12, 14);
+  widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 5);
 
   let data = null;
   try {
     const req = new Request(SERVER_URL);
     req.timeoutInterval = 8;
+    req.headers = { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" };
     data = await req.loadJSON();
   } catch (err) {
     data = null;
@@ -94,13 +98,25 @@ async function createWidget() {
     errTitle.textColor = new Color("#ff1744");
     errTitle.font = Font.heavySystemFont(13);
     widget.addSpacer(4);
-    const errMsg = widget.addText(data ? "Belum ada habit aktif." : "Server offline / tidak terjangkau.");
+    const errMsg = widget.addText(data ? "Belum ada target habit aktif." : "Server offline / periksa koneksi.");
     errMsg.textColor = new Color("#888888");
     errMsg.font = Font.systemFont(10);
     return widget;
   }
 
-  const primaryHabit = data.habits.items[0];
+  const habits = data.habits.items;
+  let targetHabit = habits[0];
+  const param = args.widgetParameter ? args.widgetParameter.trim() : "";
+
+  if (param) {
+    const num = parseInt(param, 10);
+    if (!isNaN(num) && num >= 1 && num <= habits.length) {
+      targetHabit = habits[num - 1];
+    } else {
+      const found = habits.find((h) => h.name.toLowerCase().includes(param.toLowerCase()));
+      if (found) targetHabit = found;
+    }
+  }
 
   // Header
   const header = widget.addStack();
@@ -113,18 +129,18 @@ async function createWidget() {
     header.addSpacer(4);
   }
 
-  const habitTitle = header.addText(primaryHabit.name);
+  const habitTitle = header.addText(targetHabit.name);
   habitTitle.textColor = new Color("#ffffff");
   habitTitle.font = Font.heavySystemFont(12);
 
   header.addSpacer();
-  const streakPill = header.addText(primaryHabit.currentStreak + "d STREAK");
+  const streakPill = header.addText(targetHabit.currentStreak + "d STREAK");
   streakPill.textColor = new Color("#ffe600");
   streakPill.font = Font.boldSystemFont(11);
 
   widget.addSpacer(8);
 
-  // Contribution Grid via DrawContext (7 rows x 12 cols)
+  // Precise Commit Grid (7 rows x 12 cols)
   const rows = 7;
   const cols = 12;
   const cellSize = 12;
@@ -140,7 +156,7 @@ async function createWidget() {
   draw.respectScreenScale = true;
 
   const dayLabels = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-  const gridCells = primaryHabit.grid || [];
+  const gridCells = targetHabit.grid || [];
 
   for (let r = 0; r < rows; r++) {
     draw.setFont(Font.systemFont(8));
@@ -148,38 +164,44 @@ async function createWidget() {
     draw.drawText(dayLabels[r], new Point(0, r * (cellSize + cellGap) + 1));
   }
 
-  const totalSlots = rows * cols;
-  const startIndex = Math.max(0, gridCells.length - totalSlots);
-  const displayCells = gridCells.slice(startIndex);
+  if (gridCells.length > 0) {
+    const firstCell = gridCells[0];
+    const firstDayOfWeek = firstCell.dayOfWeek;
+    const totalCols = Math.ceil((gridCells.length + firstDayOfWeek) / 7);
+    const startCol = Math.max(0, totalCols - cols);
 
-  displayCells.forEach((c, idx) => {
-    const colIdx = Math.floor(idx / rows);
-    const rowIdx = idx % rows;
+    gridCells.forEach((c, idx) => {
+      const rawCol = Math.floor((idx + firstDayOfWeek) / 7);
+      const colIdx = rawCol - startCol;
+      const rowIdx = c.dayOfWeek;
 
-    const x = labelWidth + colIdx * (cellSize + cellGap);
-    const y = rowIdx * (cellSize + cellGap);
-    const rect = new Rect(x, y, cellSize, cellSize);
+      if (colIdx >= 0 && colIdx < cols && rowIdx >= 0 && rowIdx < rows) {
+        const x = labelWidth + colIdx * (cellSize + cellGap);
+        const y = rowIdx * (cellSize + cellGap);
+        const rect = new Rect(x, y, cellSize, cellSize);
 
-    let cellColor = new Color("#161720");
-    if (c.isChecked) {
-      cellColor = new Color("#ff1744");
-    } else if (c.value > 0) {
-      cellColor = new Color("#9e0e27");
-    }
+        let cellColor = new Color("#161720");
+        if (c.isChecked) {
+          cellColor = new Color("#ff1744");
+        } else if (c.value > 0) {
+          cellColor = new Color("#9e0e27");
+        }
 
-    draw.setFillColor(cellColor);
-    draw.fill(rect);
+        draw.setFillColor(cellColor);
+        draw.fill(rect);
 
-    draw.setStrokeColor(new Color("#000000"));
-    draw.setLineWidth(1);
-    draw.strokeRect(rect);
+        draw.setStrokeColor(new Color("#000000"));
+        draw.setLineWidth(1);
+        draw.strokeRect(rect);
 
-    if (c.isToday) {
-      draw.setStrokeColor(new Color("#ffe600"));
-      draw.setLineWidth(1.5);
-      draw.strokeRect(rect);
-    }
-  });
+        if (c.isToday) {
+          draw.setStrokeColor(new Color("#ffe600"));
+          draw.setLineWidth(1.5);
+          draw.strokeRect(rect);
+        }
+      }
+    });
+  }
 
   const gridImage = draw.getImage();
   const imageStack = widget.addImage(gridImage);
@@ -190,12 +212,12 @@ async function createWidget() {
   // Footer
   const footer = widget.addStack();
   footer.centerAlignContent();
-  const statusText = footer.addText(primaryHabit.checkedToday ? "[✔] Hari ini Selesai" : "[ ] Belum Check-in");
-  statusText.textColor = primaryHabit.checkedToday ? new Color("#ffe600") : new Color("#888888");
+  const statusText = footer.addText(targetHabit.checkedToday ? "[✔] Hari ini Selesai" : "[ ] Belum Check-in");
+  statusText.textColor = targetHabit.checkedToday ? new Color("#ffe600") : new Color("#888888");
   statusText.font = Font.boldSystemFont(9);
 
   footer.addSpacer();
-  const bestText = footer.addText("Best: " + primaryHabit.longestStreak + "d");
+  const bestText = footer.addText("Best: " + targetHabit.longestStreak + "d");
   bestText.textColor = new Color("#ff1744");
   bestText.font = Font.boldSystemFont(9);
 
@@ -212,19 +234,25 @@ Script.complete();`;
 
   // Script 2: To-Do Checklist Script
   const todoScriptCode = `// ==============================================================================
-// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET: TO-DO MISSIONS CHECKLIST
+// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET 2: TO-DO MISSIONS CHECKLIST
 // ==============================================================================
-const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today"; // Ganti dengan IP Tailscale/LAN
+// 1. Ganti SERVER_URL dengan IP Tailscale/LAN home server Anda.
+// 2. Parameter: Kosong ("all"), "pending", atau "done".
+// ==============================================================================
+
+const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today";
 
 async function createWidget() {
   const widget = new ListWidget();
   widget.backgroundColor = new Color("#08080a");
   widget.setPadding(12, 14, 12, 14);
+  widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 5);
 
   let data = null;
   try {
     const req = new Request(SERVER_URL);
     req.timeoutInterval = 8;
+    req.headers = { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" };
     data = await req.loadJSON();
   } catch (err) {
     data = null;
@@ -235,10 +263,26 @@ async function createWidget() {
     errTitle.textColor = new Color("#ff1744");
     errTitle.font = Font.heavySystemFont(13);
     widget.addSpacer(4);
-    const errMsg = widget.addText("Server offline / tidak terjangkau.");
+    const errMsg = widget.addText(data ? "Tidak ada to-do." : "Server offline / periksa koneksi.");
     errMsg.textColor = new Color("#888888");
     errMsg.font = Font.systemFont(10);
     return widget;
+  }
+
+  const param = args.widgetParameter ? args.widgetParameter.trim().toLowerCase() : "all";
+  const pending = data.todos.pending || [];
+  const completed = data.todos.completed || [];
+
+  let displayItems = [];
+  if (param === "pending") {
+    displayItems = pending.slice(0, 6);
+  } else if (param === "done") {
+    displayItems = completed.slice(0, 6);
+  } else {
+    const maxTotal = 5;
+    const pendingSlice = pending.slice(0, 4);
+    const completedSlice = completed.slice(0, maxTotal - pendingSlice.length);
+    displayItems = [...pendingSlice, ...completedSlice];
   }
 
   // Header
@@ -258,19 +302,16 @@ async function createWidget() {
 
   header.addSpacer();
   const countPill = header.addText(data.todos.totalPending + " PENDING");
-  countPill.textColor = new Color("#ff1744");
+  countPill.textColor = data.todos.totalPending > 0 ? new Color("#ff1744") : new Color("#00e676");
   countPill.font = Font.boldSystemFont(10);
 
   widget.addSpacer(8);
 
-  // To-do items list
-  const allItems = data.todos.items || [];
-  const displayItems = allItems.slice(0, 5);
-
+  // Items list
   if (displayItems.length === 0) {
-    const emptyText = widget.addText("✨ Tidak ada misi to-do saat ini.");
-    emptyText.textColor = new Color("#797d94");
-    emptyText.font = Font.systemFont(10);
+    const emptyText = widget.addText(data.todos.totalPending === 0 ? "Semua target hari ini selesai!" : "Belum ada misi to-do.");
+    emptyText.textColor = new Color("#ffe600");
+    emptyText.font = Font.italicSystemFont(10);
   } else {
     displayItems.forEach((t) => {
       const row = widget.addStack();
@@ -301,7 +342,7 @@ async function createWidget() {
   // Footer
   const footer = widget.addStack();
   footer.centerAlignContent();
-  const summaryText = footer.addText("Total: " + allItems.length + " | Selesai: " + data.todos.totalCompleted);
+  const summaryText = footer.addText("Pending: " + data.todos.totalPending + " | Selesai: " + data.todos.totalCompleted);
   summaryText.textColor = new Color("#797d94");
   summaryText.font = Font.systemFont(8);
 
@@ -329,7 +370,6 @@ Script.complete();`;
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } else {
-      // If clipboard API completely blocked by iOS, open the manual code view
       setShowRawCode(true);
       alert('Kliping otomatis terblokir browser. Silakan pilih dan salin teks langsung dari kotak kode di bawah.');
     }
@@ -552,7 +592,7 @@ Script.complete();`;
 
                 {/* To-Do items with check / strike-through */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  {todoItems.slice(0, 5).map((t) => (
+                  {displayTodos.map((t) => (
                     <div
                       key={t.id}
                       style={{
@@ -597,7 +637,7 @@ Script.complete();`;
                     </div>
                   ))}
 
-                  {todoItems.length === 0 && (
+                  {displayTodos.length === 0 && (
                     <div style={{ fontSize: '0.75rem', color: 'var(--p5-gray-muted)', fontStyle: 'italic', padding: '0.5rem 0' }}>
                       Belum ada to-do missions saat ini.
                     </div>
@@ -618,7 +658,7 @@ Script.complete();`;
                     fontFamily: 'var(--font-accent)',
                   }}
                 >
-                  <span>Total: {summary?.todos.total || todoItems.length} | Selesai: {summary?.todos.totalCompleted || 0}</span>
+                  <span>Pending: {summary?.todos.totalPending || 0} | Selesai: {summary?.todos.totalCompleted || 0}</span>
                   <span style={{ color: 'var(--p5-yellow)', fontWeight: 800 }}>{summary?.meta.date}</span>
                 </div>
               </div>

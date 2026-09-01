@@ -2,10 +2,11 @@
 // PHANTOM TRACKER // iOS SCRIPTABLE WIDGET 2: TO-DO MISSIONS CHECKLIST
 // ==============================================================================
 // Petunjuk:
-// 1. Install aplikasi "Scriptable" dari iOS App Store di iPhone.
-// 2. Buat script baru, copy & paste isi file ini ke Scriptable.
-// 3. Ubah variabel SERVER_URL di bawah ke alamat Tailscale / LAN home server Anda.
-// 4. Tambahkan Widget Scriptable ukuran Medium / Large di Home Screen iOS.
+// 1. Ganti SERVER_URL di bawah ke alamat IP Tailscale / LAN home server Anda.
+// 2. Di Widget Setting Scriptable pada Home Screen iOS, Anda bisa mengisi Parameter:
+//    - Kosong (default) : Menampilkan misi pending teratas diikuti yang selesai
+//    - "pending" : Hanya menampilkan to-do yang belum selesai
+//    - "done" : Hanya menampilkan to-do yang sudah selesai
 // ==============================================================================
 
 const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today"; // Ganti dengan IP Tailscale/LAN
@@ -15,10 +16,17 @@ async function createWidget() {
   widget.backgroundColor = new Color("#08080a");
   widget.setPadding(12, 14, 12, 14);
 
+  // Auto refresh interval 5 menit
+  widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 5);
+
   let data = null;
   try {
     const req = new Request(SERVER_URL);
     req.timeoutInterval = 8;
+    req.headers = {
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+    };
     data = await req.loadJSON();
   } catch (err) {
     data = null;
@@ -29,10 +37,28 @@ async function createWidget() {
     errTitle.textColor = new Color("#ff1744");
     errTitle.font = Font.heavySystemFont(13);
     widget.addSpacer(4);
-    const errMsg = widget.addText("Server offline / tidak terjangkau.");
+    const errMsg = widget.addText(data ? "Tidak ada to-do." : "Server offline / periksa koneksi.");
     errMsg.textColor = new Color("#888888");
     errMsg.font = Font.systemFont(10);
     return widget;
+  }
+
+  // --- FILTER ITEMS ---
+  const param = args.widgetParameter ? args.widgetParameter.trim().toLowerCase() : "all";
+  const pending = data.todos.pending || [];
+  const completed = data.todos.completed || [];
+
+  let displayItems = [];
+  if (param === "pending") {
+    displayItems = pending.slice(0, 6);
+  } else if (param === "done") {
+    displayItems = completed.slice(0, 6);
+  } else {
+    // Show up to 4 pending, then remaining slots for completed
+    const maxTotal = 5;
+    const pendingSlice = pending.slice(0, 4);
+    const completedSlice = completed.slice(0, maxTotal - pendingSlice.length);
+    displayItems = [...pendingSlice, ...completedSlice];
   }
 
   // --- HEADER ---
@@ -54,20 +80,16 @@ async function createWidget() {
   header.addSpacer();
 
   const countPill = header.addText(data.todos.totalPending + " PENDING");
-  countPill.textColor = new Color("#ff1744");
+  countPill.textColor = data.todos.totalPending > 0 ? new Color("#ff1744") : new Color("#00e676");
   countPill.font = Font.boldSystemFont(10);
 
   widget.addSpacer(8);
 
-  // --- LIST OF TODOS ---
-  const allItems = data.todos.items || [];
-  const maxItems = 5;
-  const displayItems = allItems.slice(0, maxItems);
-
+  // --- TO-DO ITEMS LIST ---
   if (displayItems.length === 0) {
-    const emptyText = widget.addText("✨ Tidak ada misi to-do saat ini.");
-    emptyText.textColor = new Color("#797d94");
-    emptyText.font = Font.systemFont(10);
+    const emptyText = widget.addText(data.todos.totalPending === 0 ? "Semua target hari ini selesai!" : "Belum ada misi to-do.");
+    emptyText.textColor = new Color("#ffe600");
+    emptyText.font = Font.italicSystemFont(10);
   } else {
     displayItems.forEach((t) => {
       const row = widget.addStack();
@@ -102,7 +124,7 @@ async function createWidget() {
   // --- FOOTER ---
   const footer = widget.addStack();
   footer.centerAlignContent();
-  const summaryText = footer.addText(`Total: ${allItems.length} | Selesai: ${data.todos.totalCompleted}`);
+  const summaryText = footer.addText(`Pending: ${data.todos.totalPending} | Selesai: ${data.todos.totalCompleted}`);
   summaryText.textColor = new Color("#797d94");
   summaryText.font = Font.systemFont(8);
 
