@@ -9,6 +9,8 @@ services:
       - PORT=5050
       - NODE_ENV=production
       - DATABASE_URL=postgres://habit_user:habit_password@postgres:5432/habit_tracker
+    volumes:
+      - app-data:/app/.data
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,3 +35,4 @@ services:
 
 volumes:
   pgdata:
+  app-data:
