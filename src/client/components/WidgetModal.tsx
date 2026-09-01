@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { WidgetSummary } from '../services/api.ts';
-import { X, Copy, Check, Smartphone, Flame, CheckSquare, Zap, Target } from 'lucide-react';
+import { X, Copy, Check, Smartphone, Flame, CheckSquare, Code, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface WidgetModalProps {
   isOpen: boolean;
@@ -8,16 +8,66 @@ interface WidgetModalProps {
   summary?: WidgetSummary | null;
 }
 
+// Universal clipboard copy helper (Safe for iOS Safari on non-HTTPS/IP addresses)
+async function copyToClipboard(text: string): Promise<boolean> {
+  // 1. Try modern clipboard API if available in secure context
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn('navigator.clipboard failed, attempting fallback...', err);
+    }
+  }
+
+  // 2. iOS-safe execCommand fallback
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.setAttribute('readonly', '');
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    textArea.style.opacity = '0.01';
+    textArea.style.fontSize = '16px'; // Prevent zoom on iOS
+
+    document.body.appendChild(textArea);
+
+    // Specific iOS Safari selection
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, 999999);
+
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return successful;
+  } catch (err) {
+    console.error('All copy methods failed:', err);
+    return false;
+  }
+}
+
 export const WidgetModal: React.FC<WidgetModalProps> = ({ isOpen, onClose, summary }) => {
   const [activeWidgetTab, setActiveWidgetTab] = useState<'habits' | 'todos'>('habits');
   const [selectedHabitIndex, setSelectedHabitIndex] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [showRawCode, setShowRawCode] = useState(false);
 
   if (!isOpen) return null;
 
   const habitItems = summary?.habits.items || [];
   const selectedHabit = habitItems[selectedHabitIndex] || habitItems[0];
-  const todoItems = summary?.todos.items || [];
+  const todoItems = summary?.todos.items || [
+    ...(summary?.todos.pending || []),
+    ...(summary?.todos.completed || []),
+  ];
 
   // Script 1: Habit Grid Script
   const habitScriptCode = `// ==============================================================================
@@ -271,11 +321,18 @@ if (config.runsInWidget) {
 }
 Script.complete();`;
 
-  const handleCopy = () => {
-    const activeCode = activeWidgetTab === 'habits' ? habitScriptCode : todoScriptCode;
-    navigator.clipboard.writeText(activeCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  const activeCode = activeWidgetTab === 'habits' ? habitScriptCode : todoScriptCode;
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(activeCode);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } else {
+      // If clipboard API completely blocked by iOS, open the manual code view
+      setShowRawCode(true);
+      alert('Kliping otomatis terblokir browser. Silakan pilih dan salin teks langsung dari kotak kode di bawah.');
+    }
   };
 
   return (
@@ -561,12 +618,53 @@ Script.complete();`;
                     fontFamily: 'var(--font-accent)',
                   }}
                 >
-                  <span>Total: {summary?.todos.total || 0} | Selesai: {summary?.todos.totalCompleted || 0}</span>
+                  <span>Total: {summary?.todos.total || todoItems.length} | Selesai: {summary?.todos.totalCompleted || 0}</span>
                   <span style={{ color: 'var(--p5-yellow)', fontWeight: 800 }}>{summary?.meta.date}</span>
                 </div>
               </div>
             </div>
           )}
+
+          {/* Manual Code Viewer Toggle (Fail-safe for iOS) */}
+          <div style={{ marginBottom: '1rem' }}>
+            <button
+              type="button"
+              className="p5-btn p5-btn-secondary p5-btn-sm p5-btn-block"
+              onClick={() => setShowRawCode(!showRawCode)}
+              style={{ justifyContent: 'space-between', fontSize: '0.74rem' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Code size={14} color="var(--p5-yellow)" />
+                <span>{showRawCode ? 'SEMBUNYIKAN KODE SKRIP' : 'LIHAT / SALIN KODE MANUAL (JIKA TOMBOL COPY DIBLOKIR)'}</span>
+              </div>
+              {showRawCode ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            {showRawCode && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <textarea
+                  readOnly
+                  value={activeCode}
+                  onFocus={(e) => e.target.select()}
+                  style={{
+                    width: '100%',
+                    height: '140px',
+                    backgroundColor: '#0a0a0f',
+                    color: '#00e5ff',
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    border: 'var(--border-solid)',
+                    padding: '0.5rem',
+                    boxSizing: 'border-box',
+                    whiteSpace: 'pre',
+                  }}
+                />
+                <p style={{ fontSize: '0.65rem', color: 'var(--p5-gray-muted)', marginTop: '0.25rem' }}>
+                  Tap di dalam kotak untuk select all, lalu pilih Copy di iPhone.
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Quick Setup Instructions */}
           <div style={{ marginBottom: '1rem' }}>
