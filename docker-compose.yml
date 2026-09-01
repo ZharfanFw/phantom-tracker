@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    container_name: habit-tracker-app
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      - PORT=5050
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://habit_user:habit_password@postgres:5432/habit_tracker
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: habit-tracker-db
+    restart: unless-stopped
+    ports:
+      - "5435:5432"
+    environment:
+      - POSTGRES_USER=habit_user
+      - POSTGRES_PASSWORD=habit_password
+      - POSTGRES_DB=habit_tracker
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U habit_user -d habit_tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
