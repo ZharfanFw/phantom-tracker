@@ -99,7 +99,7 @@ async function createWidget() {
       mark.textColor = h.checkedToday ? new Color("#ffe600") : new Color("#666666");
       mark.font = Font.boldSystemFont(10);
 
-      const name = row.addText(h.name.length > 12 ? h.name.substring(0, 11) + "..." : h.name);
+      const name = row.addText(h.name.length > 11 ? h.name.substring(0, 10) + "..." : h.name);
       name.textColor = new Color("#e0e0e0");
       name.font = Font.systemFont(10);
 
@@ -136,7 +136,7 @@ async function createWidget() {
       bullet.textColor = new Color("#ff1744");
       bullet.font = Font.boldSystemFont(9);
 
-      const title = row.addText(t.title.length > 14 ? t.title.substring(0, 13) + "..." : t.title);
+      const title = row.addText(t.title.length > 12 ? t.title.substring(0, 11) + "..." : t.title);
       title.textColor = new Color("#cccccc");
       title.font = Font.systemFont(9);
       todoCol.addSpacer(2);
@@ -162,82 +162,139 @@ Script.complete();`;
 
   return (
     <div className="p5-modal-backdrop" onClick={onClose}>
-      <div className="p5-modal" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+      <div className="p5-modal" style={{ maxWidth: '560px', width: '100%', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="p5-card-header yellow-strip">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            <Smartphone size={18} color="var(--p5-yellow)" />
-            <h3 className="title-p5" style={{ fontSize: '1.4rem', color: 'var(--p5-white)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
+            <Smartphone size={18} color="var(--p5-yellow)" style={{ flexShrink: 0 }} />
+            <h3 className="title-p5" style={{ fontSize: '1.3rem', color: 'var(--p5-white)', margin: 0, whiteSpace: 'nowrap' }}>
               iOS WIDGET GUIDE
             </h3>
           </div>
           <button
             onClick={onClose}
             className="p5-btn p5-btn-secondary p5-btn-icon"
-            style={{ width: '32px', height: '32px', minHeight: '32px', padding: 0 }}
+            style={{ width: '30px', height: '30px', minHeight: '30px', padding: 0 }}
           >
-            <X size={15} />
+            <X size={14} />
           </button>
         </div>
 
-        <div style={{ padding: '1.1rem' }}>
+        <div style={{ padding: '0.9rem', width: '100%', boxSizing: 'border-box' }}>
           {/* Simulated iOS Widget Live Preview */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
-              <span className="label-p5" style={{ fontSize: '0.8rem' }}>
-                LIVE PREVIEW IPHONE WIDGET
+          <div style={{ marginBottom: '1.15rem', width: '100%', boxSizing: 'border-box' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.45rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span className="label-p5" style={{ fontSize: '0.76rem', color: 'var(--p5-white)' }}>
+                PREVIEW WIDGET IPHONE
               </span>
               <div style={{ display: 'flex', gap: '0.3rem' }}>
                 <button
                   className={`p5-btn p5-btn-sm ${widgetSize === 'medium' ? 'p5-btn-primary' : 'p5-btn-secondary'}`}
                   onClick={() => setWidgetSize('medium')}
-                  style={{ minHeight: '28px', padding: '0.2rem 0.5rem', fontSize: '0.68rem' }}
+                  style={{ minHeight: '26px', padding: '0.15rem 0.5rem', fontSize: '0.68rem' }}
                 >
                   MEDIUM
                 </button>
                 <button
                   className={`p5-btn p5-btn-sm ${widgetSize === 'large' ? 'p5-btn-primary' : 'p5-btn-secondary'}`}
                   onClick={() => setWidgetSize('large')}
-                  style={{ minHeight: '28px', padding: '0.2rem 0.5rem', fontSize: '0.68rem' }}
+                  style={{ minHeight: '26px', padding: '0.15rem 0.5rem', fontSize: '0.68rem' }}
                 >
                   LARGE
                 </button>
               </div>
             </div>
 
-            {/* Simulated Widget Box */}
+            {/* Simulated Widget Box (Strictly Contained) */}
             <div
               style={{
                 backgroundColor: '#090a0f',
                 border: 'var(--border-solid)',
                 boxShadow: 'var(--shadow-red)',
-                padding: '1rem',
+                padding: '0.75rem 0.85rem',
                 color: '#fff',
                 position: 'relative',
-                minHeight: widgetSize === 'medium' ? '160px' : '260px',
+                width: '100%',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+                minHeight: widgetSize === 'medium' ? '150px' : '250px',
               }}
             >
               {/* Widget Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <Flame size={15} color="var(--p5-red)" strokeWidth={2.5} />
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--p5-red)', letterSpacing: '1px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  marginBottom: '0.6rem',
+                  width: '100%',
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                  <Flame size={14} color="var(--p5-red)" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '0.95rem',
+                      color: 'var(--p5-red)',
+                      letterSpacing: '0.5px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
                     PHANTOM TRACKER
                   </span>
                 </div>
-                <span className="p5-sticker yellow" style={{ fontSize: '0.62rem', padding: '0.1rem 0.35rem' }}>
+                <span className="p5-sticker yellow" style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem', flexShrink: 0 }}>
                   {summary?.meta.date || 'TODAY'}
                 </span>
               </div>
 
-              {/* Grid content inside simulated widget */}
-              <div style={{ display: 'grid', gridTemplateColumns: widgetSize === 'large' ? '1fr' : '1fr 1fr', gap: '0.65rem' }}>
-                {/* Habit col */}
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--p5-white)', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Target size={11} color="var(--p5-red)" strokeWidth={2.5} />
-                    <span>HABITS ({summary?.habits.doneToday || 0}/{summary?.habits.total || 0})</span>
+              {/* Grid content inside simulated widget (Strict Two-Column on Medium, Single on Large) */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: widgetSize === 'large' ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: '0.55rem',
+                  width: '100%',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Habit Column */}
+                <div style={{ minWidth: 0, width: '100%', overflow: 'hidden', boxSizing: 'border-box' }}>
+                  <div
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      color: 'var(--p5-white)',
+                      marginBottom: '0.3rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    <Target size={11} color="var(--p5-red)" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                    <span>HABIT ({summary?.habits.doneToday || 0}/{summary?.habits.total || 0})</span>
                   </div>
+
                   {summary?.habits.items.slice(0, widgetSize === 'large' ? 4 : 2).map((h) => (
                     <div
                       key={h.id}
@@ -245,47 +302,110 @@ Script.complete();`;
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        fontSize: '0.7rem',
+                        gap: '3px',
+                        fontSize: '0.68rem',
                         marginBottom: '0.2rem',
                         padding: '0.2rem 0.35rem',
-                        backgroundColor: '#151620',
+                        backgroundColor: '#14151f',
                         border: '1px solid #000',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        minWidth: 0,
+                        overflow: 'hidden',
                       }}
                     >
-                      <span style={{ color: h.checkedToday ? 'var(--p5-yellow)' : '#888' }}>
-                        {h.checkedToday ? '[x]' : '[ ]'} {h.name}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          minWidth: 0,
+                          flex: 1,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <span style={{ color: h.checkedToday ? 'var(--p5-yellow)' : '#888', fontWeight: 800, flexShrink: 0 }}>
+                          {h.checkedToday ? '[x]' : '[ ]'}
+                        </span>
+                        <span
+                          style={{
+                            color: '#e0e0e0',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            minWidth: 0,
+                          }}
+                        >
+                          {h.name}
+                        </span>
+                      </div>
+                      <span style={{ color: 'var(--p5-red)', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>
+                        {h.currentStreak}d
                       </span>
-                      <span style={{ color: 'var(--p5-red)', fontWeight: 700 }}>{h.currentStreak}d</span>
                     </div>
                   ))}
+                  {(!summary?.habits.items || summary.habits.items.length === 0) && (
+                    <div style={{ fontSize: '0.65rem', color: '#888', fontStyle: 'italic' }}>
+                      Belum ada habit
+                    </div>
+                  )}
                 </div>
 
-                {/* Todos col */}
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--p5-white)', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Zap size={11} color="var(--p5-yellow)" strokeWidth={2.5} />
-                    <span>TO-DO ({summary?.todos.totalPending || 0} PENDING)</span>
+                {/* Todos Column */}
+                <div style={{ minWidth: 0, width: '100%', overflow: 'hidden', boxSizing: 'border-box' }}>
+                  <div
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      color: 'var(--p5-white)',
+                      marginBottom: '0.3rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    <Zap size={11} color="var(--p5-yellow)" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                    <span>TO-DO ({summary?.todos.totalPending || 0})</span>
                   </div>
+
                   {summary?.todos.pending.slice(0, widgetSize === 'large' ? 4 : 2).map((t) => (
                     <div
                       key={t.id}
                       style={{
-                        fontSize: '0.7rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: '0.68rem',
                         marginBottom: '0.2rem',
                         padding: '0.2rem 0.35rem',
-                        backgroundColor: '#151620',
+                        backgroundColor: '#14151f',
                         border: '1px solid #000',
-                        whiteSpace: 'nowrap',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        minWidth: 0,
                         overflow: 'hidden',
-                        textOverflow: 'ellipsis',
                       }}
                     >
-                      <span style={{ color: 'var(--p5-red)', marginRight: '3px' }}>-</span>
-                      {t.title}
+                      <span style={{ color: 'var(--p5-red)', fontWeight: 800, flexShrink: 0 }}>-</span>
+                      <span
+                        style={{
+                          color: '#cccccc',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          minWidth: 0,
+                          flex: 1,
+                        }}
+                      >
+                        {t.title}
+                      </span>
                     </div>
                   ))}
                   {(!summary?.todos.pending || summary.todos.pending.length === 0) && (
-                    <div style={{ fontSize: '0.68rem', color: 'var(--p5-yellow)', fontStyle: 'italic' }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--p5-yellow)', fontStyle: 'italic' }}>
                       Semua misi selesai!
                     </div>
                   )}
@@ -295,11 +415,11 @@ Script.complete();`;
           </div>
 
           {/* Quick Setup Guide */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <h4 className="label-p5" style={{ fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--p5-white)' }}>
+          <div style={{ marginBottom: '1rem', width: '100%', boxSizing: 'border-box' }}>
+            <h4 className="label-p5" style={{ fontSize: '0.8rem', marginBottom: '0.35rem', color: 'var(--p5-white)' }}>
               LANGKAH PEMASANGAN DI IPHONE:
             </h4>
-            <ol style={{ paddingLeft: '1.2rem', fontSize: '0.8rem', color: 'var(--p5-gray-light)', lineHeight: 1.5 }}>
+            <ol style={{ paddingLeft: '1.15rem', fontSize: '0.76rem', color: 'var(--p5-gray-light)', lineHeight: 1.5 }}>
               <li>Install <strong>Scriptable</strong> dari App Store di iPhone.</li>
               <li>Klik tombol <strong>"COPY SCRIPT"</strong> di bawah.</li>
               <li>Buka Scriptable, tekan <strong>+</strong>, paste kode skrip.</li>
@@ -309,19 +429,19 @@ Script.complete();`;
           </div>
 
           {/* Action button */}
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '0.45rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button className="p5-btn p5-btn-secondary p5-btn-sm" onClick={onClose}>
               TUTUP
             </button>
             <button className={`p5-btn p5-btn-sm ${copied ? 'p5-btn-yellow' : 'p5-btn-primary'}`} onClick={handleCopy}>
               {copied ? (
                 <>
-                  <Check size={16} strokeWidth={3} />
+                  <Check size={15} strokeWidth={3} />
                   <span>BERHASIL DI-COPY</span>
                 </>
               ) : (
                 <>
-                  <Copy size={15} />
+                  <Copy size={14} />
                   <span>COPY SCRIPT SCRIPTABLE</span>
                 </>
               )}
