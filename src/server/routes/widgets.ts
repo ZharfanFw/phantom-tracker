@@ -6,19 +6,28 @@ import { id as idLocale } from 'date-fns/locale';
 
 export const widgetsRouter = new Hono();
 
-// GET /api/widgets/today - Compact payload for iOS Widget (Scriptable / Shortcuts)
+// Helper to format greeting
+function getGreeting(hour: number) {
+  if (hour >= 5 && hour < 12) return 'Rise & Grind, Joker';
+  if (hour >= 12 && hour < 17) return 'Keep The Momentum';
+  if (hour >= 17 && hour < 21) return 'Mission In Progress';
+  return 'Steal The Night';
+}
+
+// GET /api/widgets/today - Comprehensive summary payload for widgets
 widgetsRouter.get('/today', async (c) => {
   try {
     const todayStr = getTodayDateString();
 
-    // 1. Get habits
+    // 1. Get habits with grid data
     const activeHabits = await dbService.getHabits();
 
     const habitsSummary = await Promise.all(
       activeHabits.map(async (habit) => {
         const checkins = await dbService.getCheckins(habit.id);
         const stats = calculateStreakStats(checkins, habit.targetCount, habit.type);
-        const recentMini = generateContributionGrid(checkins, 14, habit.targetCount, habit.type);
+        // 84 days = 12 weeks of cells for commit grid widget
+        const gridCells = generateContributionGrid(checkins, 84, habit.targetCount, habit.type);
 
         return {
           id: habit.id,
@@ -29,26 +38,20 @@ widgetsRouter.get('/today', async (c) => {
           currentStreak: stats.currentStreak,
           longestStreak: stats.longestStreak,
           checkedToday: stats.checkedToday,
-          miniHistory: recentMini.map((m) => (m.isChecked ? 1 : 0)),
+          completionRate30d: stats.completionRate30d,
+          grid: gridCells,
         };
       })
     );
 
     // 2. Get todos
-    const allTodos = await dbService.getTodos('all', 20);
+    const allTodos = await dbService.getTodos('all', 30);
     const pendingTodos = allTodos.filter((t) => !t.isDone);
     const completedTodos = allTodos.filter((t) => t.isDone);
 
-    // 3. Formatting
     const now = new Date();
     const formattedDate = format(now, 'EEEE, d MMMM yyyy', { locale: idLocale });
-
-    const hour = now.getHours();
-    let phantomGreeting = 'Take Your Time';
-    if (hour >= 5 && hour < 12) phantomGreeting = 'Rise & Grind, Joker';
-    else if (hour >= 12 && hour < 17) phantomGreeting = 'Keep The Momentum';
-    else if (hour >= 17 && hour < 21) phantomGreeting = 'Mission In Progress';
-    else phantomGreeting = 'Steal The Night';
+    const greeting = getGreeting(now.getHours());
 
     const totalHabits = habitsSummary.length;
     const habitsDoneToday = habitsSummary.filter((h) => h.checkedToday).length;
@@ -58,7 +61,7 @@ widgetsRouter.get('/today', async (c) => {
       meta: {
         date: todayStr,
         formattedDate,
-        greeting: phantomGreeting,
+        greeting,
         updatedAt: now.toISOString(),
       },
       habits: {
@@ -68,10 +71,18 @@ widgetsRouter.get('/today', async (c) => {
         items: habitsSummary,
       },
       todos: {
+        total: allTodos.length,
         totalPending: pendingTodos.length,
         totalCompleted: completedTodos.length,
-        pending: pendingTodos.map((t) => ({ id: t.id, title: t.title, source: t.source })),
-        completed: completedTodos.slice(0, 5).map((t) => ({ id: t.id, title: t.title })),
+        items: allTodos.map((t) => ({
+          id: t.id,
+          title: t.title,
+          source: t.source,
+          isDone: t.isDone,
+          createdAt: t.createdAt,
+        })),
+        pending: pendingTodos.map((t) => ({ id: t.id, title: t.title, source: t.source, isDone: false })),
+        completed: completedTodos.map((t) => ({ id: t.id, title: t.title, source: t.source, isDone: true })),
       },
     });
   } catch (error) {

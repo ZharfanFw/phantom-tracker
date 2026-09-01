@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { WidgetSummary } from '../services/api.ts';
-import { X, Copy, Check, Smartphone, Flame, Target, Zap } from 'lucide-react';
+import { X, Copy, Check, Smartphone, Flame, CheckSquare, Zap, Target } from 'lucide-react';
 
 interface WidgetModalProps {
   isOpen: boolean;
@@ -9,20 +9,166 @@ interface WidgetModalProps {
 }
 
 export const WidgetModal: React.FC<WidgetModalProps> = ({ isOpen, onClose, summary }) => {
+  const [activeWidgetTab, setActiveWidgetTab] = useState<'habits' | 'todos'>('habits');
+  const [selectedHabitIndex, setSelectedHabitIndex] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [widgetSize, setWidgetSize] = useState<'medium' | 'large'>('medium');
 
   if (!isOpen) return null;
 
-  const scriptCode = `// ==============================================================================
-// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET (PERSONA 5 NEO-BRUTALISM THEME)
+  const habitItems = summary?.habits.items || [];
+  const selectedHabit = habitItems[selectedHabitIndex] || habitItems[0];
+  const todoItems = summary?.todos.items || [];
+
+  // Script 1: Habit Grid Script
+  const habitScriptCode = `// ==============================================================================
+// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET: HABIT STREAK COMMIT GRID
 // ==============================================================================
-// 1. Ganti SERVER_URL dengan IP Tailscale/LAN home server Anda
-const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today";
+const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today"; // Ganti dengan IP Tailscale/LAN
 
 async function createWidget() {
   const widget = new ListWidget();
-  widget.backgroundColor = new Color("#090a0f");
+  widget.backgroundColor = new Color("#08080a");
+  widget.setPadding(12, 14, 12, 14);
+
+  let data = null;
+  try {
+    const req = new Request(SERVER_URL);
+    req.timeoutInterval = 8;
+    data = await req.loadJSON();
+  } catch (err) {
+    data = null;
+  }
+
+  if (!data || !data.success || !data.habits || data.habits.items.length === 0) {
+    const errTitle = widget.addText("[!] PHANTOM HABIT GRID");
+    errTitle.textColor = new Color("#ff1744");
+    errTitle.font = Font.heavySystemFont(13);
+    widget.addSpacer(4);
+    const errMsg = widget.addText(data ? "Belum ada habit aktif." : "Server offline / tidak terjangkau.");
+    errMsg.textColor = new Color("#888888");
+    errMsg.font = Font.systemFont(10);
+    return widget;
+  }
+
+  const primaryHabit = data.habits.items[0];
+
+  // Header
+  const header = widget.addStack();
+  header.centerAlignContent();
+  const brandSymbol = SFSymbol.named("flame.fill");
+  if (brandSymbol) {
+    const iconImg = header.addImage(brandSymbol.image);
+    iconImg.tintColor = new Color("#ff1744");
+    iconImg.imageSize = new Size(13, 13);
+    header.addSpacer(4);
+  }
+
+  const habitTitle = header.addText(primaryHabit.name);
+  habitTitle.textColor = new Color("#ffffff");
+  habitTitle.font = Font.heavySystemFont(12);
+
+  header.addSpacer();
+  const streakPill = header.addText(primaryHabit.currentStreak + "d STREAK");
+  streakPill.textColor = new Color("#ffe600");
+  streakPill.font = Font.boldSystemFont(11);
+
+  widget.addSpacer(8);
+
+  // Contribution Grid via DrawContext (7 rows x 12 cols)
+  const rows = 7;
+  const cols = 12;
+  const cellSize = 12;
+  const cellGap = 3;
+  const labelWidth = 24;
+
+  const canvasWidth = labelWidth + cols * (cellSize + cellGap);
+  const canvasHeight = rows * (cellSize + cellGap);
+
+  const draw = new DrawContext();
+  draw.size = new Size(canvasWidth, canvasHeight);
+  draw.opaque = false;
+  draw.respectScreenScale = true;
+
+  const dayLabels = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+  const gridCells = primaryHabit.grid || [];
+
+  for (let r = 0; r < rows; r++) {
+    draw.setFont(Font.systemFont(8));
+    draw.setTextColor(new Color("#797d94"));
+    draw.drawText(dayLabels[r], new Point(0, r * (cellSize + cellGap) + 1));
+  }
+
+  const totalSlots = rows * cols;
+  const startIndex = Math.max(0, gridCells.length - totalSlots);
+  const displayCells = gridCells.slice(startIndex);
+
+  displayCells.forEach((c, idx) => {
+    const colIdx = Math.floor(idx / rows);
+    const rowIdx = idx % rows;
+
+    const x = labelWidth + colIdx * (cellSize + cellGap);
+    const y = rowIdx * (cellSize + cellGap);
+    const rect = new Rect(x, y, cellSize, cellSize);
+
+    let cellColor = new Color("#161720");
+    if (c.isChecked) {
+      cellColor = new Color("#ff1744");
+    } else if (c.value > 0) {
+      cellColor = new Color("#9e0e27");
+    }
+
+    draw.setFillColor(cellColor);
+    draw.fill(rect);
+
+    draw.setStrokeColor(new Color("#000000"));
+    draw.setLineWidth(1);
+    draw.strokeRect(rect);
+
+    if (c.isToday) {
+      draw.setStrokeColor(new Color("#ffe600"));
+      draw.setLineWidth(1.5);
+      draw.strokeRect(rect);
+    }
+  });
+
+  const gridImage = draw.getImage();
+  const imageStack = widget.addImage(gridImage);
+  imageStack.imageSize = new Size(canvasWidth, canvasHeight);
+
+  widget.addSpacer(6);
+
+  // Footer
+  const footer = widget.addStack();
+  footer.centerAlignContent();
+  const statusText = footer.addText(primaryHabit.checkedToday ? "[✔] Hari ini Selesai" : "[ ] Belum Check-in");
+  statusText.textColor = primaryHabit.checkedToday ? new Color("#ffe600") : new Color("#888888");
+  statusText.font = Font.boldSystemFont(9);
+
+  footer.addSpacer();
+  const bestText = footer.addText("Best: " + primaryHabit.longestStreak + "d");
+  bestText.textColor = new Color("#ff1744");
+  bestText.font = Font.boldSystemFont(9);
+
+  return widget;
+}
+
+const widget = await createWidget();
+if (config.runsInWidget) {
+  Script.setWidget(widget);
+} else {
+  widget.presentMedium();
+}
+Script.complete();`;
+
+  // Script 2: To-Do Checklist Script
+  const todoScriptCode = `// ==============================================================================
+// PHANTOM TRACKER // iOS SCRIPTABLE WIDGET: TO-DO MISSIONS CHECKLIST
+// ==============================================================================
+const SERVER_URL = "http://YOUR_SERVER_IP:5050/api/widgets/today"; // Ganti dengan IP Tailscale/LAN
+
+async function createWidget() {
+  const widget = new ListWidget();
+  widget.backgroundColor = new Color("#08080a");
   widget.setPadding(12, 14, 12, 14);
 
   let data = null;
@@ -35,113 +181,84 @@ async function createWidget() {
   }
 
   if (!data || !data.success) {
-    const errStack = widget.addStack();
-    errStack.layoutVertically();
-    const errTitle = errStack.addText("[!] PHANTOM TRACKER");
+    const errTitle = widget.addText("[!] PHANTOM TO-DO");
     errTitle.textColor = new Color("#ff1744");
     errTitle.font = Font.heavySystemFont(13);
-
-    errStack.addSpacer(4);
-    const errMsg = errStack.addText("Server offline / tidak terjangkau.");
+    widget.addSpacer(4);
+    const errMsg = widget.addText("Server offline / tidak terjangkau.");
     errMsg.textColor = new Color("#888888");
     errMsg.font = Font.systemFont(10);
     return widget;
   }
 
-  // --- HEADER ---
+  // Header
   const header = widget.addStack();
   header.centerAlignContent();
-
-  const brandSymbol = SFSymbol.named("flame.fill");
+  const brandSymbol = SFSymbol.named("checkmark.square.fill");
   if (brandSymbol) {
     const iconImg = header.addImage(brandSymbol.image);
-    iconImg.tintColor = new Color("#ff1744");
+    iconImg.tintColor = new Color("#ffe600");
     iconImg.imageSize = new Size(13, 13);
     header.addSpacer(4);
   }
 
-  const brandTitle = header.addText("PHANTOM TRACKER");
-  brandTitle.textColor = new Color("#ff1744");
-  brandTitle.font = Font.heavySystemFont(13);
+  const brandTitle = header.addText("TO-DO MISSIONS");
+  brandTitle.textColor = new Color("#ffffff");
+  brandTitle.font = Font.heavySystemFont(12);
 
   header.addSpacer();
-
-  const datePill = header.addText(data.meta.date);
-  datePill.textColor = new Color("#ffe600");
-  datePill.font = Font.boldSystemFont(10);
+  const countPill = header.addText(data.todos.totalPending + " PENDING");
+  countPill.textColor = new Color("#ff1744");
+  countPill.font = Font.boldSystemFont(10);
 
   widget.addSpacer(8);
 
-  // --- CONTENT SECTION: HABITS & TODOS ---
-  const contentStack = widget.addStack();
-  contentStack.layoutHorizontally();
+  // To-do items list
+  const allItems = data.todos.items || [];
+  const displayItems = allItems.slice(0, 5);
 
-  // Left column: Habits
-  const habitCol = contentStack.addStack();
-  habitCol.layoutVertically();
-
-  const habitHeader = habitCol.addText("[ HABITS: " + data.habits.doneToday + "/" + data.habits.total + " ]");
-  habitHeader.textColor = new Color("#ffffff");
-  habitHeader.font = Font.heavySystemFont(10);
-  habitCol.addSpacer(3);
-
-  const habitItems = data.habits.items.slice(0, 3);
-  if (habitItems.length === 0) {
-    const noHabit = habitCol.addText("Belum ada target");
-    noHabit.textColor = new Color("#666666");
-    noHabit.font = Font.systemFont(9);
+  if (displayItems.length === 0) {
+    const emptyText = widget.addText("✨ Tidak ada misi to-do saat ini.");
+    emptyText.textColor = new Color("#797d94");
+    emptyText.font = Font.systemFont(10);
   } else {
-    habitItems.forEach((h) => {
-      const row = habitCol.addStack();
+    displayItems.forEach((t) => {
+      const row = widget.addStack();
       row.centerAlignContent();
 
-      const mark = row.addText(h.checkedToday ? "[x] " : "[ ] ");
-      mark.textColor = h.checkedToday ? new Color("#ffe600") : new Color("#666666");
-      mark.font = Font.boldSystemFont(10);
+      const checkText = row.addText(t.isDone ? "[✔] " : "[ ] ");
+      checkText.textColor = t.isDone ? new Color("#00e676") : new Color("#ff1744");
+      checkText.font = Font.boldSystemFont(10);
 
-      const name = row.addText(h.name.length > 11 ? h.name.substring(0, 10) + "..." : h.name);
-      name.textColor = new Color("#e0e0e0");
-      name.font = Font.systemFont(10);
+      const titleText = row.addText(t.title);
+      titleText.textColor = t.isDone ? new Color("#666666") : new Color("#f0f0f0");
+      titleText.font = Font.systemFont(10);
+      titleText.lineLimit = 1;
 
       row.addSpacer();
-      const streak = row.addText(h.currentStreak + "d");
-      streak.textColor = new Color("#ff1744");
-      streak.font = Font.boldSystemFont(9);
-      habitCol.addSpacer(2);
+      if (t.source === "popup") {
+        const tag = row.addText("POPUP");
+        tag.textColor = new Color("#ff1744");
+        tag.font = Font.boldSystemFont(8);
+      }
+
+      widget.addSpacer(3);
     });
   }
 
-  contentStack.addSpacer(10);
+  widget.addSpacer(4);
 
-  // Right column: Todos
-  const todoCol = contentStack.addStack();
-  todoCol.layoutVertically();
+  // Footer
+  const footer = widget.addStack();
+  footer.centerAlignContent();
+  const summaryText = footer.addText("Total: " + allItems.length + " | Selesai: " + data.todos.totalCompleted);
+  summaryText.textColor = new Color("#797d94");
+  summaryText.font = Font.systemFont(8);
 
-  const todoHeader = todoCol.addText("[ TO-DO: " + data.todos.totalPending + " PENDING ]");
-  todoHeader.textColor = new Color("#ffffff");
-  todoHeader.font = Font.heavySystemFont(10);
-  todoCol.addSpacer(3);
-
-  const pendingList = data.todos.pending.slice(0, 3);
-  if (pendingList.length === 0) {
-    const allDone = todoCol.addText("Semua misi selesai!");
-    allDone.textColor = new Color("#ffe600");
-    allDone.font = Font.italicSystemFont(9);
-  } else {
-    pendingList.forEach((t) => {
-      const row = todoCol.addStack();
-      row.centerAlignContent();
-
-      const bullet = row.addText("- ");
-      bullet.textColor = new Color("#ff1744");
-      bullet.font = Font.boldSystemFont(9);
-
-      const title = row.addText(t.title.length > 12 ? t.title.substring(0, 11) + "..." : t.title);
-      title.textColor = new Color("#cccccc");
-      title.font = Font.systemFont(9);
-      todoCol.addSpacer(2);
-    });
-  }
+  footer.addSpacer();
+  const dateText = footer.addText(data.meta.date);
+  dateText.textColor = new Color("#ffe600");
+  dateText.font = Font.boldSystemFont(8);
 
   return widget;
 }
@@ -155,20 +272,21 @@ if (config.runsInWidget) {
 Script.complete();`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(scriptCode);
+    const activeCode = activeWidgetTab === 'habits' ? habitScriptCode : todoScriptCode;
+    navigator.clipboard.writeText(activeCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
   return (
     <div className="p5-modal-backdrop" onClick={onClose}>
-      <div className="p5-modal" style={{ maxWidth: '560px', width: '100%', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
+      <div className="p5-modal" style={{ maxWidth: '580px', width: '100%', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="p5-card-header yellow-strip">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
             <Smartphone size={18} color="var(--p5-yellow)" style={{ flexShrink: 0 }} />
             <h3 className="title-p5" style={{ fontSize: '1.3rem', color: 'var(--p5-white)', margin: 0, whiteSpace: 'nowrap' }}>
-              iOS WIDGET GUIDE
+              iOS WIDGET CENTER
             </h3>
           </div>
           <button
@@ -181,254 +299,290 @@ Script.complete();`;
         </div>
 
         <div style={{ padding: '0.9rem', width: '100%', boxSizing: 'border-box' }}>
-          {/* Simulated iOS Widget Live Preview */}
-          <div style={{ marginBottom: '1.15rem', width: '100%', boxSizing: 'border-box' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginBottom: '0.45rem',
-                flexWrap: 'wrap',
-              }}
+          {/* Widget Type Selector Tabs */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem', marginBottom: '1rem' }}>
+            <button
+              className={`p5-btn p5-btn-sm ${activeWidgetTab === 'habits' ? 'p5-btn-primary' : 'p5-btn-secondary'}`}
+              onClick={() => setActiveWidgetTab('habits')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
             >
-              <span className="label-p5" style={{ fontSize: '0.76rem', color: 'var(--p5-white)' }}>
-                PREVIEW WIDGET IPHONE
-              </span>
-              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                <button
-                  className={`p5-btn p5-btn-sm ${widgetSize === 'medium' ? 'p5-btn-primary' : 'p5-btn-secondary'}`}
-                  onClick={() => setWidgetSize('medium')}
-                  style={{ minHeight: '26px', padding: '0.15rem 0.5rem', fontSize: '0.68rem' }}
-                >
-                  MEDIUM
-                </button>
-                <button
-                  className={`p5-btn p5-btn-sm ${widgetSize === 'large' ? 'p5-btn-primary' : 'p5-btn-secondary'}`}
-                  onClick={() => setWidgetSize('large')}
-                  style={{ minHeight: '26px', padding: '0.15rem 0.5rem', fontSize: '0.68rem' }}
-                >
-                  LARGE
-                </button>
-              </div>
-            </div>
+              <Flame size={14} strokeWidth={2.5} />
+              <span>1. HABIT GRID WIDGET</span>
+            </button>
+            <button
+              className={`p5-btn p5-btn-sm ${activeWidgetTab === 'todos' ? 'p5-btn-primary' : 'p5-btn-secondary'}`}
+              onClick={() => setActiveWidgetTab('todos')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+            >
+              <CheckSquare size={14} strokeWidth={2.5} />
+              <span>2. TO-DO WIDGET</span>
+            </button>
+          </div>
 
-            {/* Simulated Widget Box (Strictly Contained) */}
-            <div
-              style={{
-                backgroundColor: '#090a0f',
-                border: 'var(--border-solid)',
-                boxShadow: 'var(--shadow-red)',
-                padding: '0.75rem 0.85rem',
-                color: '#fff',
-                position: 'relative',
-                width: '100%',
-                maxWidth: '100%',
-                boxSizing: 'border-box',
-                overflow: 'hidden',
-                minHeight: widgetSize === 'medium' ? '150px' : '250px',
-              }}
-            >
-              {/* Widget Header */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  marginBottom: '0.6rem',
-                  width: '100%',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                  <Flame size={14} color="var(--p5-red)" strokeWidth={2.5} style={{ flexShrink: 0 }} />
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: '0.95rem',
-                      color: 'var(--p5-red)',
-                      letterSpacing: '0.5px',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    PHANTOM TRACKER
+          {/* ========================================================
+              VIEW 1: HABIT STREAK COMMIT GRID WIDGET PREVIEW
+              ======================================================== */}
+          {activeWidgetTab === 'habits' && (
+            <div style={{ marginBottom: '1.15rem' }}>
+              {/* Habit selector if multiple habits */}
+              {habitItems.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', overflowX: 'auto', paddingBottom: '2px' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--p5-gray-muted)', fontFamily: 'var(--font-accent)', whiteSpace: 'nowrap' }}>
+                    Pilih Target:
                   </span>
+                  {habitItems.map((h, idx) => (
+                    <button
+                      key={h.id}
+                      className={`p5-btn p5-btn-sm ${selectedHabitIndex === idx ? 'p5-btn-yellow' : 'p5-btn-secondary'}`}
+                      onClick={() => setSelectedHabitIndex(idx)}
+                      style={{ minHeight: '24px', padding: '0.15rem 0.45rem', fontSize: '0.65rem' }}
+                    >
+                      {h.name}
+                    </button>
+                  ))}
                 </div>
-                <span className="p5-sticker yellow" style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem', flexShrink: 0 }}>
-                  {summary?.meta.date || 'TODAY'}
-                </span>
-              </div>
+              )}
 
-              {/* Grid content inside simulated widget (Strict Two-Column on Medium, Single on Large) */}
+              {/* Simulated iOS Habit Commit Grid Widget Box */}
               <div
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: widgetSize === 'large' ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)',
-                  gap: '0.55rem',
+                  backgroundColor: '#08080a',
+                  border: 'var(--border-solid)',
+                  boxShadow: 'var(--shadow-red)',
+                  padding: '0.85rem',
+                  color: '#fff',
                   width: '100%',
                   maxWidth: '100%',
                   boxSizing: 'border-box',
                   overflow: 'hidden',
                 }}
               >
-                {/* Habit Column */}
-                <div style={{ minWidth: 0, width: '100%', overflow: 'hidden', boxSizing: 'border-box' }}>
-                  <div
-                    style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      color: 'var(--p5-white)',
-                      marginBottom: '0.3rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    <Target size={11} color="var(--p5-red)" strokeWidth={2.5} style={{ flexShrink: 0 }} />
-                    <span>HABIT ({summary?.habits.doneToday || 0}/{summary?.habits.total || 0})</span>
-                  </div>
-
-                  {summary?.habits.items.slice(0, widgetSize === 'large' ? 4 : 2).map((h) => (
-                    <div
-                      key={h.id}
+                {/* Header inside widget */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
+                    <Flame size={15} color="var(--p5-red)" strokeWidth={2.8} style={{ flexShrink: 0 }} />
+                    <span
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '3px',
-                        fontSize: '0.68rem',
-                        marginBottom: '0.2rem',
-                        padding: '0.2rem 0.35rem',
-                        backgroundColor: '#14151f',
-                        border: '1px solid #000',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        minWidth: 0,
+                        fontFamily: 'var(--font-accent)',
+                        fontWeight: 800,
+                        fontSize: '0.88rem',
+                        color: '#ffffff',
+                        whiteSpace: 'nowrap',
                         overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                       }}
                     >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          minWidth: 0,
-                          flex: 1,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <span style={{ color: h.checkedToday ? 'var(--p5-yellow)' : '#888', fontWeight: 800, flexShrink: 0 }}>
-                          {h.checkedToday ? '[x]' : '[ ]'}
-                        </span>
-                        <span
-                          style={{
-                            color: '#e0e0e0',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            minWidth: 0,
-                          }}
-                        >
-                          {h.name}
-                        </span>
-                      </div>
-                      <span style={{ color: 'var(--p5-red)', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>
-                        {h.currentStreak}d
-                      </span>
-                    </div>
-                  ))}
-                  {(!summary?.habits.items || summary.habits.items.length === 0) && (
-                    <div style={{ fontSize: '0.65rem', color: '#888', fontStyle: 'italic' }}>
-                      Belum ada habit
-                    </div>
-                  )}
+                      {selectedHabit?.name || 'Habit Target'}
+                    </span>
+                  </div>
+                  <span className="p5-sticker yellow" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem', flexShrink: 0 }}>
+                    🔥 {selectedHabit?.currentStreak || 0}d STREAK
+                  </span>
                 </div>
 
-                {/* Todos Column */}
-                <div style={{ minWidth: 0, width: '100%', overflow: 'hidden', boxSizing: 'border-box' }}>
-                  <div
-                    style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      color: 'var(--p5-white)',
-                      marginBottom: '0.3rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    <Zap size={11} color="var(--p5-yellow)" strokeWidth={2.5} style={{ flexShrink: 0 }} />
-                    <span>TO-DO ({summary?.todos.totalPending || 0})</span>
-                  </div>
+                {/* Commit Grid heat map rendered in widget */}
+                <div style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', paddingBottom: '4px' }}>
+                  <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start', width: 'max-content' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateRows: 'repeat(7, 12px)',
+                        gap: '3px',
+                        fontSize: '0.58rem',
+                        fontFamily: 'var(--font-accent)',
+                        color: 'var(--p5-gray-muted)',
+                        lineHeight: '12px',
+                        userSelect: 'none',
+                      }}
+                    >
+                      <span>Min</span>
+                      <span>Sen</span>
+                      <span>Sel</span>
+                      <span>Rab</span>
+                      <span>Kam</span>
+                      <span>Jum</span>
+                      <span>Sab</span>
+                    </div>
 
-                  {summary?.todos.pending.slice(0, widgetSize === 'large' ? 4 : 2).map((t) => (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateRows: 'repeat(7, 12px)',
+                        gridAutoFlow: 'column',
+                        gridAutoColumns: '12px',
+                        gap: '3px',
+                      }}
+                    >
+                      {(selectedHabit?.grid || []).slice(-84).map((cell) => {
+                        let bg = '#161720';
+                        if (cell.isChecked) bg = '#ff1744';
+                        else if (cell.value > 0) bg = '#9e0e27';
+
+                        return (
+                          <div
+                            key={cell.date}
+                            style={{
+                              width: '12px',
+                              height: '12px',
+                              backgroundColor: bg,
+                              border: cell.isToday ? '1.5px solid #ffe600' : '1px solid #000',
+                              gridRow: cell.dayOfWeek + 1,
+                              boxShadow: cell.isChecked ? '0 0 3px rgba(255,23,68,0.5)' : 'none',
+                            }}
+                            title={`${cell.date}: ${cell.isChecked ? 'Selesai' : 'Belum'}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer stats in widget */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: '0.5rem',
+                    paddingTop: '0.4rem',
+                    borderTop: '1px solid #1a1b24',
+                    fontSize: '0.7rem',
+                    fontFamily: 'var(--font-accent)',
+                  }}
+                >
+                  <span style={{ color: selectedHabit?.checkedToday ? 'var(--p5-yellow)' : 'var(--p5-gray-muted)', fontWeight: 800 }}>
+                    {selectedHabit?.checkedToday ? '[✔] Hari ini Selesai' : '[ ] Belum Check-in'}
+                  </span>
+                  <span style={{ color: 'var(--p5-red)', fontWeight: 800 }}>
+                    Best: {selectedHabit?.longestStreak || 0}d
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              VIEW 2: TO-DO MISSIONS CHECKLIST WIDGET PREVIEW
+              ======================================================== */}
+          {activeWidgetTab === 'todos' && (
+            <div style={{ marginBottom: '1.15rem' }}>
+              {/* Simulated iOS To-Do Checklist Widget Box */}
+              <div
+                style={{
+                  backgroundColor: '#08080a',
+                  border: 'var(--border-solid)',
+                  boxShadow: 'var(--shadow-yellow)',
+                  padding: '0.85rem',
+                  color: '#fff',
+                  width: '100%',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Header inside widget */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <CheckSquare size={15} color="var(--p5-yellow)" strokeWidth={2.8} />
+                    <span style={{ fontFamily: 'var(--font-accent)', fontWeight: 800, fontSize: '0.88rem', color: '#ffffff' }}>
+                      TO-DO MISSIONS
+                    </span>
+                  </div>
+                  <span className="p5-sticker red" style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem' }}>
+                    {summary?.todos.totalPending || 0} PENDING
+                  </span>
+                </div>
+
+                {/* To-Do items with check / strike-through */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  {todoItems.slice(0, 5).map((t) => (
                     <div
                       key={t.id}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '3px',
-                        fontSize: '0.68rem',
-                        marginBottom: '0.2rem',
-                        padding: '0.2rem 0.35rem',
-                        backgroundColor: '#14151f',
-                        border: '1px solid #000',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        minWidth: 0,
-                        overflow: 'hidden',
+                        gap: '0.45rem',
+                        fontSize: '0.74rem',
+                        padding: '0.3rem 0.45rem',
+                        backgroundColor: '#13141b',
+                        border: '1px solid #20212c',
                       }}
                     >
-                      <span style={{ color: 'var(--p5-red)', fontWeight: 800, flexShrink: 0 }}>-</span>
                       <span
                         style={{
-                          color: '#cccccc',
+                          color: t.isDone ? '#00e676' : 'var(--p5-red)',
+                          fontWeight: 900,
+                          flexShrink: 0,
+                          fontFamily: 'var(--font-accent)',
+                        }}
+                      >
+                        {t.isDone ? '[✔]' : '[ ]'}
+                      </span>
+                      <span
+                        style={{
+                          color: t.isDone ? 'var(--p5-gray-muted)' : '#f0f0f0',
+                          textDecoration: t.isDone ? 'line-through' : 'none',
+                          textDecorationColor: 'var(--p5-red)',
+                          textDecorationThickness: '2px',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          minWidth: 0,
                           flex: 1,
                         }}
                       >
                         {t.title}
                       </span>
+                      {t.source === 'popup' && (
+                        <span style={{ fontSize: '0.6rem', color: 'var(--p5-red)', fontWeight: 800, flexShrink: 0, fontFamily: 'var(--font-accent)' }}>
+                          POPUP
+                        </span>
+                      )}
                     </div>
                   ))}
-                  {(!summary?.todos.pending || summary.todos.pending.length === 0) && (
-                    <div style={{ fontSize: '0.65rem', color: 'var(--p5-yellow)', fontStyle: 'italic' }}>
-                      Semua misi selesai!
+
+                  {todoItems.length === 0 && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--p5-gray-muted)', fontStyle: 'italic', padding: '0.5rem 0' }}>
+                      Belum ada to-do missions saat ini.
                     </div>
                   )}
                 </div>
+
+                {/* Footer */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: '0.5rem',
+                    paddingTop: '0.4rem',
+                    borderTop: '1px solid #1a1b24',
+                    fontSize: '0.68rem',
+                    color: 'var(--p5-gray-muted)',
+                    fontFamily: 'var(--font-accent)',
+                  }}
+                >
+                  <span>Total: {summary?.todos.total || 0} | Selesai: {summary?.todos.totalCompleted || 0}</span>
+                  <span style={{ color: 'var(--p5-yellow)', fontWeight: 800 }}>{summary?.meta.date}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Quick Setup Guide */}
-          <div style={{ marginBottom: '1rem', width: '100%', boxSizing: 'border-box' }}>
+          {/* Quick Setup Instructions */}
+          <div style={{ marginBottom: '1rem' }}>
             <h4 className="label-p5" style={{ fontSize: '0.8rem', marginBottom: '0.35rem', color: 'var(--p5-white)' }}>
-              LANGKAH PEMASANGAN DI IPHONE:
+              CARA MEMASANG WIDGET DI IPHONE:
             </h4>
             <ol style={{ paddingLeft: '1.15rem', fontSize: '0.76rem', color: 'var(--p5-gray-light)', lineHeight: 1.5 }}>
-              <li>Install <strong>Scriptable</strong> dari App Store di iPhone.</li>
-              <li>Klik tombol <strong>"COPY SCRIPT"</strong> di bawah.</li>
-              <li>Buka Scriptable, tekan <strong>+</strong>, paste kode skrip.</li>
+              <li>Unduh aplikasi <strong>Scriptable</strong> dari iOS App Store.</li>
+              <li>Klik tombol <strong>"COPY SCRIPT"</strong> di bawah untuk widget yang dipilih ({activeWidgetTab === 'habits' ? 'Habit Grid' : 'To-Do Checklist'}).</li>
+              <li>Buka Scriptable, tekan tombol <strong>+</strong>, lalu Paste kodenya.</li>
               <li>Ganti <code>YOUR_SERVER_IP</code> dengan IP Tailscale/LAN home server.</li>
-              <li>Tambahkan Widget Scriptable ke Home Screen!</li>
+              <li>Tambahkan Widget Scriptable ukuran Medium di Home Screen iPhone!</li>
             </ol>
           </div>
 
-          {/* Action button */}
+          {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.45rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button className="p5-btn p5-btn-secondary p5-btn-sm" onClick={onClose}>
               TUTUP
@@ -437,12 +591,12 @@ Script.complete();`;
               {copied ? (
                 <>
                   <Check size={15} strokeWidth={3} />
-                  <span>BERHASIL DI-COPY</span>
+                  <span>KODE BERHASIL DI-COPY!</span>
                 </>
               ) : (
                 <>
                   <Copy size={14} />
-                  <span>COPY SCRIPT SCRIPTABLE</span>
+                  <span>COPY SCRIPT ({activeWidgetTab === 'habits' ? 'HABIT GRID' : 'TO-DO'})</span>
                 </>
               )}
             </button>

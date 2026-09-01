@@ -62,14 +62,23 @@ export interface WidgetSummary {
       currentStreak: number;
       longestStreak: number;
       checkedToday: boolean;
-      miniHistory: number[];
+      completionRate30d?: number;
+      grid?: DayCell[];
     }>;
   };
   todos: {
+    total?: number;
     totalPending: number;
     totalCompleted: number;
-    pending: Array<{ id: string; title: string; source: string }>;
-    completed: Array<{ id: string; title: string }>;
+    items?: Array<{
+      id: string;
+      title: string;
+      source: string;
+      isDone: boolean;
+      createdAt: string;
+    }>;
+    pending: Array<{ id: string; title: string; source: string; isDone?: boolean }>;
+    completed: Array<{ id: string; title: string; source?: string; isDone?: boolean }>;
   };
 }
 
